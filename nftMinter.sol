@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 contract MyToken is ERC721, ERC721URIStorage, AccessControl {
     error WhitelistClaimedAlready();
     error NotWhitelisted();
+    error AmountTooSmall(uint expectedamount, uint inputtedAmount);
     bytes32 public merkleRoot; // this is the calculated merkleRoot
     address public owner;
    // mapping(address => NFTMetaInfo) public nftInfo;
@@ -22,8 +23,8 @@ contract MyToken is ERC721, ERC721URIStorage, AccessControl {
     uint256 public maxMints;
     string public description;
     string public utils;
- 
-
+  uint immutable power = 10**18;
+  receive() payable external{}
     //Mint limit can be decided by contract owner
     //to decide how many NFTs a user can have
 
@@ -35,6 +36,14 @@ contract MyToken is ERC721, ERC721URIStorage, AccessControl {
     Counters.Counter private _tokenIdCounter;
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
   bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+  struct NFTFinance{
+      address owner;
+      uint amount;
+      uint minters;
+
+  }
+mapping(address => NFTFinance) public nft_details;
+  event Minting(address indexed minter);
     constructor(
       
         uint256 _price,
@@ -79,21 +88,43 @@ contract MyToken is ERC721, ERC721URIStorage, AccessControl {
 
    
 
-    function safeMint(address to)
-        public
+    function safeMint()
+        public payable
         onlyRole(MINTER_ROLE) notMintLimit
     {
          
         require(
             balanceOf(msg.sender) < maxMints
         );
+        if(msg.value * power < price){
+           uint expectedamount = price;
+            uint inputtedAmount = msg.value;
+            revert AmountTooSmall(expectedamount, inputtedAmount);
+        }
+        uint excess_balance = msg.value - price;
+        uint payable_amount = msg.value- excess_balance; 
+        nft_details[owner].amount = nft_details[owner].amount + msg.value;
+        nft_details[owner].minters++;
+
         uint256 tokenId = _tokenIdCounter.current();
         _tokenIdCounter.increment();
-        _safeMint(to, tokenId);
+        _safeMint(owner, tokenId);
         //_setTokenURI(tokenId, uri);
         tokenCount= tokenId + 1;
+        if(msg.value > nft_details[owner].amount){
+        payable(address(msg.sender)).transfer(excess_balance);   
        
+        payable(address(owner)).transfer(payable_amount);
+         
+            
+       }
+      else{
+      
+          payable(address(owner)).transfer(msg.value);
+           
+      } 
         notMinted = totalMintable - tokenCount;
+        emit Minting(msg.sender);
     }
 
     
